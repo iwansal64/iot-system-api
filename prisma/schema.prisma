@@ -1,0 +1,90 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+    provider = "prisma-client-js"
+    output   = "../generated/prisma"
+}
+
+datasource db {
+    provider = "mysql"
+    url      = env("DATABASE_URL")
+}
+
+// Models
+model UserVerificationKeys {
+    id    String @id @default(uuid())
+    token String
+    email String
+}
+
+model User {
+    id       String @id @default(uuid())
+    username String @unique
+    email    String @unique
+    password String
+
+    // Relations
+    managed_workspaces Workspace[]
+}
+
+model DeviceKey {
+    id String @id @default(uuid())
+
+    associated_device Device @relation(fields: [device_key], references: [id], onDelete: Cascade)
+    device_key        String
+}
+
+model Device {
+    id     String @id @default(uuid())
+    name   String
+    status Int    @default(-1)
+
+    last_online DateTime?
+    created_at  DateTime  @default(now())
+
+    // Relations
+    workspace    Workspace? @relation(fields: [workspace_id], references: [id])
+    workspace_id String?
+
+    controlled_controllables Controllable[]
+
+    device_key DeviceKey[]
+}
+
+model Workspace {
+    id             String @id @default(uuid())
+    workspace_name String
+
+    created_at DateTime @default(now())
+
+    // Relations
+    member_devices Device[]
+
+    user    User   @relation(fields: [user_id], references: [id])
+    user_id String
+}
+
+model Controllable {
+    id    String @id @default(uuid())
+    name  String
+    value String @default("")
+
+    // Relations
+    controllable_category ControllableCategory @relation(fields: [category], references: [category_name])
+    category              String
+
+    controller_device Device @relation(fields: [device_id], references: [id])
+    device_id         String
+}
+
+model ControllableCategory {
+    id            String @id @default(uuid())
+    category_name String @unique
+
+    // Relations
+    controllables Controllable[]
+}

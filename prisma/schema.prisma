@@ -23,19 +23,11 @@ model UserVerificationKeys {
 
 model User {
     id       String @id @default(uuid())
-    username String @unique
     email    String @unique
-    password String
+    username String
 
     // Relations
     managed_workspaces Workspace[]
-}
-
-model DeviceKey {
-    id String @id @default(uuid())
-
-    associated_device Device @relation(fields: [device_key], references: [id], onDelete: Cascade)
-    device_key        String
 }
 
 model Device {
@@ -52,8 +44,6 @@ model Device {
     workspace_id String?
 
     controlled_controllables Controllable[]
-
-    device_key DeviceKey[]
 }
 
 model Workspace {

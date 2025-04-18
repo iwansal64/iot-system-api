@@ -4,21 +4,31 @@ import { apikey_validator, server_logger } from "./middlewares/security";
 import dotenv from "dotenv";
 import { connect_to_database, prisma } from "./database/database";
 import { error_handler } from "./error/handler";
+import { log_in_user, verify_user } from "./handlers/application";
 
 dotenv.config(); // .env File Initialization
 
 const fastify = Fastify();
 
-// Middleware
+//SECTION Middleware
 fastify.addHook("onRequest", apikey_validator);
 fastify.addHook("onRequest", server_logger);
 fastify.setErrorHandler(error_handler);
+//!SECTION
 
-// Routes
+//SECTION Routes
+//ANCHOR Device Section
 fastify.post('/api/device/request_key', request_key);
 fastify.post('/api/device/initialize', initialize_device);
 
+//ANCHOR Application Section
+fastify.post('/api/app/login', log_in_user);
+fastify.post('/api/app/verify', verify_user);
+
 // Run the server
+//!SECTION
+
+//SECTION Run the server
 const start = async () => {
     try {
         await connect_to_database();
@@ -39,5 +49,6 @@ const start = async () => {
         process.exit(1);
     }
 }
+//!SECTION
 
 start()

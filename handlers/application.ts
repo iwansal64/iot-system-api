@@ -3,35 +3,30 @@ import { ERROR_REGISTRATIONTOKEN_ISWRONG, ERROR_REGISTRATIONTOKEN_NOTFOUND, ERRO
 import { prisma } from "../database/database";
 import { generate_verification_token } from "../utilities";
 import nodemailer from "nodemailer";
+import jwt from "jsonwebtoken";
 
 const email_transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+        user: process.env.EMAIL_USER!,
+        pass: process.env.EMAIL_PASS!
     }
 });
 
 
-interface SignUpBody {
-    email: string
+interface LoginBody {
+    email?: string
 }
 
-interface LogInBody {
-    email_or_username: string,
-    password: string
-}
 
 interface VerifyBody {
-    id: string,
-    token: string
+    id?: string,
+    token?: string
 }
 
-interface PostVerifyBody {
-    
-}
 
-export async function verify(req: FastifyRequest<{ Body: VerifyBody }>, res: FastifyReply) {
+
+export async function verify_user(req: FastifyRequest<{ Body: VerifyBody }>, res: FastifyReply) {
     // Get the required body data
     const { id: user_given_id, token: user_given_token } = req.body;
     if(!user_given_id || !user_given_token) {
@@ -55,16 +50,42 @@ export async function verify(req: FastifyRequest<{ Body: VerifyBody }>, res: Fas
         return res.code(500).send(ERROR_REGISTRATIONTOKEN_ISWRONG);
     }
 
+    // Create or Update a new user
+    try {
+        await prisma.user.upsert({
+            where: {
+                email: verification_key_data.email
+            },
+            create: {
+                email: verification_key_data.email,
+                username: verification_key_data.email.split("@")[0],
+            },
+            update: {}
+        })
+    }
+    catch(error) {
+        console.error(`There's an error when trying to upsert user`);
+        return res.code(500).send(ERROR_UNKNOWN_ERROR);
+    }
+
     return {
-        message: "Email successfully registered",
+        message: "Succesfully logged in with email",
         success: true,
         data: {
-
+            token: jwt.sign(
+                {
+                    email: verification_key_data.email
+                }, 
+                process.env.USER_JWT_TOKEN_SECRET!,
+                { 
+                    expiresIn: "1h" 
+                }
+            )
         }
     }
 }
 
-export async function sign_up(req: FastifyRequest<{ Body: SignUpBody }>, res: FastifyReply) {
+export async function log_in_user(req: FastifyRequest<{ Body: LoginBody }>, res: FastifyReply) {
     // Get the required body data
     const { email: user_given_email } = req.body;
 
@@ -83,22 +104,22 @@ export async function sign_up(req: FastifyRequest<{ Body: SignUpBody }>, res: Fa
     
 
     // Send verification email      
-    try {
-        await email_transporter.sendMail({
-            from: "iwantest64@gmail.com",
-            to: user_given_email,
-            subject: "IoT App Email Confirmation",
-            text: `Hello, ${user_given_email.split("@")[0]}! I'm here to ask for an email confirmation to regiter your account into IoT App! Copy token below and paste it into the next registration process. If you sure this is a mistake you can ignore this message, thank you! I hope you have a good day today!\n\nToken: [${generated_token}]`,
-            html: `<div style="font-size: 36px; letter-spacing: 2px;">
-                ${Array.from(generated_token).map(key => "<span>"+key+"</span>")}
-            </div>`,
-            date: new Date("2025-01-01T10:00:12")
-        });
-    }
-    catch(error) {
+    email_transporter.sendMail({
+        from: "iwantest64@gmail.com",
+        to: user_given_email,
+        subject: "IoT App Email Confirmation",
+        html: `<div style="font-size: 18px; letter-spacing: 1px;">
+            <p>Hello, <i>${user_given_email.split("@")[0]}</i>! I'm here to ask for an email confirmation to regiter your account into IoT App! Copy token below and paste it into the next registration process. If you sure this is a mistake you can ignore this message, thank you! I hope you have a good day today!</p>
+            <br>
+            <p>Token: <b>[${generated_token}]</b></p>
+            <div style=\"display: flex;\">
+                ${Array.from(generated_token).map(key => "<div style=\"font-size: 36px; margin-left: 10px; font-weight: bold; border: 3px solid black; border-radius: 10px; padding: 10px; width: 50px; height: 50px; display: flex; justify-content: center; align-items: center; text-align: center\"><div>"+key+"</div></div>").join("")}
+            </div>
+        </div>`,
+        date: new Date("2025-01-01T10:00:12")
+    }).catch((error) => {
         console.error(`There's an error when trying to send a message to an email. Error: ${error}`);
-        return res.code(500).send(ERROR_UNKNOWN_ERROR);
-    }
+    });
 
 
     return {
@@ -108,8 +129,4 @@ export async function sign_up(req: FastifyRequest<{ Body: SignUpBody }>, res: Fa
             id: verification_key_data.id
         }
     }
-}
-
-export async function log_in(req: FastifyRequest<{ Body: LogInBody }>, res: FastifyReply) {
-    
 }

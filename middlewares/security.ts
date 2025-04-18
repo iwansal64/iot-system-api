@@ -8,5 +8,5 @@ export async function apikey_validator(req: FastifyRequest, res: FastifyReply) {
 }
 
 export async function server_logger(req: FastifyRequest, res: FastifyReply) {
-    console.log(`[LOGGER] ip: ${req.ip}. body: ${req.body}`);
+    console.log(`[LOGGER] ip=[${req.ip}]. body=[${JSON.stringify(req.body)}]`);
 }

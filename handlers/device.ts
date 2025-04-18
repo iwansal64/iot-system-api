@@ -2,9 +2,10 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import { prisma } from "../database/database";
 import { ERROR_DEVICE_NOTFOUND, ERROR_REQUEST_BODY_NOTCOMPLETE, ERROR_UNKNOWN_ERROR } from '../error/errors';
 import { Device } from "../generated/prisma";
+import { generate_device_token } from "../utilities";
 
 interface InitializeDeviceBody {
-    device_key?: string
+    device_token?: string
 }
 
 interface RequestKeyBody {
@@ -20,27 +21,31 @@ export async function request_key(req: FastifyRequest<{ Body: RequestKeyBody }>,
     }
 
     // Save the device key to database
-    const new_device_key_data = await prisma.deviceKey.create({
-        data: {
-            associated_device: {
-                create: {
-                    name: device_name,
-                }
+    const generated_device_token = generate_device_token();
+    try {
+        await prisma.device.create({
+            data: {
+                name: device_name,
+                token: generated_device_token
             }
-        }
-    });
+        });
+    }
+    catch(error) {
+        console.error(`There's an error when trying to create device key`);
+        return res.code(500).send(ERROR_UNKNOWN_ERROR)
+    }
 
     
     return {
-        key: new_device_key_data.device_key
+        token: generated_device_token
     };
 }
 
 export async function initialize_device(req: FastifyRequest<{ Body: InitializeDeviceBody }>, res: FastifyReply) {
     // Get the device key
-    const { device_key: target_device_key } = req.body;
+    const { device_token: target_device_token } = req.body;
 
-    if(!target_device_key) {
+    if(!target_device_token) {
         return res.code(400).send(ERROR_REQUEST_BODY_NOTCOMPLETE);
     }
 
@@ -49,12 +54,7 @@ export async function initialize_device(req: FastifyRequest<{ Body: InitializeDe
     try {
         device_data = await prisma.device.findUnique({
             where: {
-                id: target_device_key,
-                device_key: {
-                    some: {
-                        device_key: target_device_key
-                    }
-                }
+                token: target_device_token,
             }
         });
 
@@ -67,32 +67,19 @@ export async function initialize_device(req: FastifyRequest<{ Body: InitializeDe
         return res.code(500).send(ERROR_UNKNOWN_ERROR);
     }
 
-    // Activate the device
+    // Update the device status
     try {
         await prisma.device.update({
             where: {
-                id: target_device_key
+                id: device_data.id
             },
             data: {
-                status: 0,
+                status: 0
             }
         });
     }
     catch(error) {
-        console.error(`There's an error when trying to activate the device. Error: ${error}`);
-        return res.code(500).send(ERROR_REQUEST_BODY_NOTCOMPLETE);
-    }
-
-    // Delete the device key
-    try {
-        await prisma.deviceKey.deleteMany({
-            where: {
-                device_key: device_data.id
-            }
-        })
-    }
-    catch(error) {
-        console.error(`There's an error when trying to delete the device key. Error: ${error}`);
+        console.error(`There's an error when trying to update the device status. Error: ${error}`);
         return res.code(500).send(ERROR_UNKNOWN_ERROR);
     }
 

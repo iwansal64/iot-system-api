@@ -42,6 +42,7 @@ model Device {
     id     String @id @default(uuid())
     name   String
     status Int    @default(-1)
+    token  String @unique
 
     last_online DateTime?
     created_at  DateTime  @default(now())

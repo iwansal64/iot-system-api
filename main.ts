@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { connect_to_database, prisma } from "./database/database";
 import { error_handler } from "./error/handler";
 import { log_in_user, verify_user } from "./handlers/application";
+import { set_offline, set_online } from "./handlers/mqtt";
 
 dotenv.config(); // .env File Initialization
 
@@ -25,7 +26,9 @@ fastify.post('/api/device/initialize', initialize_device);
 fastify.post('/api/app/login', log_in_user);
 fastify.post('/api/app/verify', verify_user);
 
-// Run the server
+//ANCHOR MQTT Section
+fastify.post('/api/mqtt/set_online', set_online);
+fastify.post('/api/mqtt/set_offline', set_offline);
 //!SECTION
 
 //SECTION Run the server

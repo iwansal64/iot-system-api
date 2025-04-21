@@ -8,6 +8,22 @@ import { log_in_user, verify_user, request_key, create_controllable, log_out_use
 import { set_offline, set_online } from "./handlers/mqtt";
 import fastifyCookie from "@fastify/cookie";
 import fastifyJwt from "@fastify/jwt";
+import os from "os";
+
+let localIP = "";
+const nets = os.networkInterfaces();
+const results = Object.create(null); // Or just '{}', an empty object
+
+for (const net of nets["Wi-Fi"]!) {
+    const familyV4Value = typeof net.family === 'string' ? 'IPv4' : 4
+    if (net.family === familyV4Value && !net.internal) {
+        if (!results["Wireless LAN adapter Wi-Fi"]) {
+            results["Wireless LAN adapter Wi-Fi"] = [];
+        }
+        localIP = net.address;
+        break;
+    }
+}
 
 dotenv.config(); // .env File Initialization
 
@@ -61,7 +77,7 @@ const start = async () => {
     
     
     try {
-	    console.log(`Listenning to port :${process.env.API_PORT}`);
+	    console.log(`Listenning to ${localIP}:${process.env.API_PORT}`);
         await fastify.listen({ port: Number.parseInt(process.env.API_PORT!), host: "0.0.0.0" });
     } catch (err) {
         console.error("ERROR TRYING TO RUN THE SERVER.");

@@ -1,52 +1,28 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { prisma } from "../database/database";
-import { ERROR_DEVICE_NOTFOUND, ERROR_REQUEST_BODY_NOTCOMPLETE, ERROR_UNKNOWN_ERROR } from '../error/errors';
+import { ERROR_CONTROLLABLE_NOTFOUND, ERROR_DEVICE_NOTFOUND, ERROR_DEVICE_UNAUTHORIZED, ERROR_DEVICE_WRONGPASS, ERROR_REQUEST_BODY_NOTCOMPLETE, ERROR_UNKNOWN_ERROR, ERROR_USER_NOTFOUND } from '../error/errors';
 import { Device } from "../generated/prisma";
-import { generate_device_token } from "../utilities";
+import { verify_device } from "../utilities";
 
 interface InitializeDeviceBody {
-    device_token?: string
+    device_key?: string
+    device_pass?: string
 }
 
-interface RequestKeyBody {
-    device_name?: string
-}
-
-export async function request_key(req: FastifyRequest<{ Body: RequestKeyBody }>, res: FastifyReply) {
-    // Get the required data
-    const { device_name } = req.body;
-
-    if(!device_name) {
-        return res.code(400).send(ERROR_REQUEST_BODY_NOTCOMPLETE);
-    }
-
-    // Save the device key to database
-    const generated_device_token = generate_device_token();
-    try {
-        await prisma.device.create({
-            data: {
-                name: device_name,
-                token: generated_device_token
-            }
-        });
-    }
-    catch(error) {
-        console.error(`There's an error when trying to create device key`);
-        return res.code(500).send(ERROR_UNKNOWN_ERROR)
-    }
-
-    
-    return {
-        token: generated_device_token
-    };
+interface ConnectControllableBody {
+    controllable_name?: string
+    device_key?: string
+    device_pass?: string
 }
 
 export async function initialize_device(req: FastifyRequest<{ Body: InitializeDeviceBody }>, res: FastifyReply) {
     // Get the device key
-    const { device_token: target_device_token } = req.body;
+    console.log("INITIALIZE");
+    
+    const { device_key: target_device_key, device_pass } = req.body;
 
-    if(!target_device_token) {
-        return res.code(400).send(ERROR_REQUEST_BODY_NOTCOMPLETE);
+    if(!target_device_key || !device_pass) {
+        return res.code(400).send(ERROR_REQUEST_BODY_NOTCOMPLETE.error_code);
     }
 
     // Verify the device key
@@ -54,17 +30,21 @@ export async function initialize_device(req: FastifyRequest<{ Body: InitializeDe
     try {
         device_data = await prisma.device.findUnique({
             where: {
-                token: target_device_token,
+                device_key: target_device_key
             }
         });
 
         if(!device_data) {
-            return res.code(404).send(ERROR_DEVICE_NOTFOUND);
+            return res.code(404).send(ERROR_DEVICE_NOTFOUND.error_code);
         }
     }
     catch(error) {
         console.error(`There's an error when trying to get the device data. Error: ${error}`);
-        return res.code(500).send(ERROR_UNKNOWN_ERROR);
+        return res.code(500).send(ERROR_UNKNOWN_ERROR.error_code);
+    }
+
+    if(device_data.device_pass != device_pass) {
+        return res.code(401).send(ERROR_DEVICE_WRONGPASS.error_code);
     }
 
     // Update the device status
@@ -74,18 +54,59 @@ export async function initialize_device(req: FastifyRequest<{ Body: InitializeDe
                 id: device_data.id
             },
             data: {
-                status: 0
+                status: 1
             }
         });
     }
     catch(error) {
         console.error(`There's an error when trying to update the device status. Error: ${error}`);
-        return res.code(500).send(ERROR_UNKNOWN_ERROR);
+        return res.code(500).send(ERROR_UNKNOWN_ERROR.error_code);
     }
 
-    return {
-        message: "Successfully initialize device!",
-        success: true,
-        data: device_data
+    return "Successfully Initialized"
+}
+
+export async function connect_to_controllable(req: FastifyRequest<{ Body: ConnectControllableBody }>, res: FastifyReply) {
+    // Get the required body
+    const { controllable_name, device_key, device_pass } = req.body;
+    if(!controllable_name || !device_key || !device_pass) {
+        return res.code(400).send(ERROR_REQUEST_BODY_NOTCOMPLETE.error_code);
     }
+
+
+    // Verify device
+    const device_data = await verify_device(device_key, device_pass);
+    if(!device_data) {
+        return res.code(401).send(ERROR_DEVICE_UNAUTHORIZED.error_code);
+    }
+
+    
+    // Get the controllable data
+    const controllable_data = await prisma.controllable.findUnique({
+        where: {
+            name_device_id: {
+                device_id: device_data.id,
+                name: controllable_name
+            }
+        }
+    });
+
+    if(!controllable_data) {
+        return res.code(404).send(ERROR_CONTROLLABLE_NOTFOUND.error_code);
+    }
+
+
+    // Get the username and password
+    const user_data = await prisma.user.findUnique({
+        where: {
+            email: device_data.user_email
+        }
+    });
+
+    if(!user_data) {
+        return res.code(404).send(ERROR_USER_NOTFOUND);
+    }
+
+
+    return controllable_data.topic_name+","+user_data.mqtt_user+","+user_data.mqtt_pass;
 }

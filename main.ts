@@ -4,7 +4,7 @@ import { apikey_validator, server_logger, user_authentication } from "./middlewa
 import dotenv from "dotenv";
 import { connect_to_database, prisma } from "./database/database";
 import { error_handler } from "./error/handler";
-import { log_in_user, verify_user, request_key, create_controllable, log_out_user, get_controllable_data } from "./handlers/application";
+import { log_in_user, verify_user, create_device, create_controllable, log_out_user, get_controllable_data, get_user_data } from "./handlers/application";
 import { set_offline, set_online } from "./handlers/mqtt";
 import fastifyCookie from "@fastify/cookie";
 import fastifyJwt from "@fastify/jwt";
@@ -56,9 +56,10 @@ fastify.post('/api/device/connect_controllable', connect_to_controllable);
 fastify.post('/api/app/login', log_in_user);
 fastify.post('/api/app/logout', log_out_user);
 fastify.post('/api/app/verify', verify_user);
-fastify.post('/api/app/request_key', request_key);
+fastify.post('/api/app/create_device', create_device);
 fastify.post('/api/app/create_controllable', create_controllable);
 fastify.post('/api/app/get_controllable', get_controllable_data);
+fastify.post('/api/app/get_user', get_user_data);
 
 //ANCHOR MQTT Section
 fastify.post('/api/mqtt/set_online', set_online);

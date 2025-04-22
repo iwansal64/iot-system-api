@@ -1,5 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { ERROR_CATEGORY_NOTFOUND, ERROR_CONTROLLABLE_NOTFOUND, ERROR_DATABASE_DUPLICATE, ERROR_REGISTRATIONTOKEN_ISWRONG, ERROR_REGISTRATIONTOKEN_NOTFOUND, ERROR_REQUEST_BODY_NOTCOMPLETE, ERROR_UNKNOWN_ERROR, ERROR_USER_UNAUTHORIZED } from "../error/errors";
+import { ERROR_CATEGORY_NOTFOUND, ERROR_CONTROLLABLE_NOTFOUND, ERROR_DATABASE_DUPLICATE, ERROR_REGISTRATIONTOKEN_ISWRONG, ERROR_REGISTRATIONTOKEN_NOTFOUND, ERROR_REQUEST_BODY_NOTCOMPLETE, ERROR_UNKNOWN_ERROR, ERROR_USER_NOTFOUND, ERROR_USER_UNAUTHORIZED } from "../error/errors";
 import { prisma } from "../database/database";
 import { generate_device_pass, generate_mqtt_user_and_pass, generate_topic_name, generate_verification_token } from "../utilities";
 import nodemailer from "nodemailer";
@@ -151,7 +151,7 @@ export async function log_out_user(req: FastifyRequest, res: FastifyReply) {
 }
 
 
-export async function request_key(req: FastifyRequest<{ Body: RequestKeyBody }>, res: FastifyReply) {
+export async function create_device(req: FastifyRequest<{ Body: RequestKeyBody }>, res: FastifyReply) {
     // Check user authentication
     if(!(await user_authentication(req, res))) {
         return res.code(401).send(ERROR_USER_UNAUTHORIZED);
@@ -294,5 +294,34 @@ export async function get_controllable_data(req: FastifyRequest<{ Body: GetContr
     return {
         success: true,
         data: controllable_data
+    }
+}
+
+export async function get_user_data(req: FastifyRequest, res: FastifyReply) {
+    // Check user authentication
+    if(!(await user_authentication(req, res))) {
+        return res.code(401).send(ERROR_USER_UNAUTHORIZED);
+    }
+
+    const user_email = req.user;
+    if(typeof user_email !== "string") {
+        return res.code(401).send(ERROR_USER_UNAUTHORIZED);
+    }
+
+
+    // Get the user data
+    const user_data = await prisma.user.findUnique({
+        where: {
+            email: user_email
+        }
+    });
+
+    if(!user_data) {
+        return res.code(404).send(ERROR_USER_NOTFOUND);
+    }
+
+    return {
+        success: true,
+        data: user_data
     }
 }

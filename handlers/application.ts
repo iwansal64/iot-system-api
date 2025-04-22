@@ -144,7 +144,7 @@ export async function log_in_user(req: FastifyRequest<{ Body: LoginBody }>, res:
 }
 
 export async function log_out_user(req: FastifyRequest, res: FastifyReply) {
-    res.cookies.user_token = undefined;
+    res.setCookie("user_token", "", { expires: new Date() });
     return {
         success: true
     };
@@ -320,8 +320,33 @@ export async function get_user_data(req: FastifyRequest, res: FastifyReply) {
         return res.code(404).send(ERROR_USER_NOTFOUND);
     }
 
+    // Get devices data
+    const devices_data = await prisma.device.findMany({
+        where: {
+            user_email: user_data.email
+        }
+    });
+
+
+    // Get controllables data
+    const controllables_data = await prisma.controllable.findMany({
+        where: {
+            controller_device: {
+                user_email: user_data.email
+            }
+        }
+    });
+    
+    
     return {
         success: true,
-        data: user_data
+        data: {
+            username: user_data.username,
+            email: user_data.email,
+            mqtt_user: user_data.mqtt_user,
+            mqtt_pass: user_data.mqtt_pass,
+            devices_count: devices_data.length,
+            controllables_count: controllables_data.length
+        }
     }
 }

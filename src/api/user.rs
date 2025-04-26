@@ -1,4 +1,4 @@
-use crate::{db::Database, types::{api::{ResponseBody, ResponseBodyType}, db_model::{RegistrationTable, User}, error::ErrorType}, utils::{self, create_user_token, generate_token, verify_user_token, verify_user_token_from_cookie}};
+use crate::{db::Database, middlewares::security::ApiKey, types::{api::{ResponseBody, ResponseBodyType}, db_model::{RegistrationTable, User}, error::ErrorType}, utils::{self, create_user_token, generate_token, verify_user_token_from_cookie}};
 use lettre::{message::Mailbox, transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
 use mongodb::bson::oid::ObjectId;
 use rocket::{http::{self, Cookie, CookieJar}, response::status, serde::json::Json, State};
@@ -31,7 +31,7 @@ pub struct LoginBody {
 
 
 #[post("/user/registration", data = "<body_data>")]
-pub async fn user_registration(db: &State<Database>, body_data: Json<UserRegistrationBody>) -> status::Custom<Json<ResponseBody>> {
+pub async fn user_registration(_api_key: ApiKey, db: &State<Database>, body_data: Json<UserRegistrationBody>) -> status::Custom<Json<ResponseBody>> {
     //? Get the required data
     let user_email = &body_data.0.email;
     println!("Incoming Email: {}", user_email);
@@ -117,12 +117,12 @@ pub async fn user_registration(db: &State<Database>, body_data: Json<UserRegistr
     };
 
     //? Success
-    status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Successfully sent email confirmation to {}!", user_email.as_str()), success: false, data: Some(ResponseBodyType::UserRegistration { id: result_id }) }))
+    status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Successfully sent email confirmation to {}!", user_email.as_str()), success: true, data: Some(ResponseBodyType::UserRegistration { id: result_id }) }))
 }
 
 
 #[post("/user/confirm_registration", data = "<body_data>")]
-pub async fn confirm_registration(db: &State<Database>, body_data: Json<ConfirmRegistrationBody>) -> status::Custom<Json<ResponseBody>> {
+pub async fn confirm_registration(_api_key: ApiKey, db: &State<Database>, body_data: Json<ConfirmRegistrationBody>) -> status::Custom<Json<ResponseBody>> {
     //? Get the required data
     let target_id = &body_data.0.id;
     let confirmation_token = &body_data.0.token;
@@ -150,7 +150,7 @@ pub async fn confirm_registration(db: &State<Database>, body_data: Json<ConfirmR
 
 
 #[post("/user/setup_registration", data = "<body_data>")]
-pub async fn setup_registration(db: &State<Database>, body_data: Json<SetupRegistrationBody>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
+pub async fn setup_registration(_api_key: ApiKey, db: &State<Database>, body_data: Json<SetupRegistrationBody>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
     //? Get the required data
     let target_id = &body_data.0.id;
     let setup_token = &body_data.0.token;
@@ -160,9 +160,9 @@ pub async fn setup_registration(db: &State<Database>, body_data: Json<SetupRegis
     //? Setup account
     let result = db.setup_account(target_id, setup_token, username, password).await;
     match result {
-        Ok(registration_data) => {
-            cookies.add(Cookie::new("user_token", create_user_token(registration_data.email.as_str())));
-            status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Successfully register!"), success: true, data: None }))
+        Ok(user_data) => {
+            cookies.add(Cookie::new("user_token", create_user_token(user_data.email.as_str())));
+            status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Successfully register!"), success: true, data: Some(ResponseBodyType::UserSetup { user_data }) }))
         },
         Err(err) => {
             match err {
@@ -171,6 +171,9 @@ pub async fn setup_registration(db: &State<Database>, body_data: Json<SetupRegis
                 },
                 ErrorType::Unauthorized(_) => {
                     return status::Custom(http::Status::Unauthorized, Json(ResponseBody { message: format!("Wrong token."), success: false, data: None }))
+                },
+                ErrorType::DuplicatesFound(_) => {
+                    return status::Custom(http::Status::Conflict, Json(ResponseBody { message: format!("Duplicates found."), success: false, data: None }))
                 },
                 _ => ()
             };
@@ -181,7 +184,7 @@ pub async fn setup_registration(db: &State<Database>, body_data: Json<SetupRegis
 
 
 #[post("/user/login", data = "<body_data>")]
-pub async fn user_login(db: &State<Database>, body_data: Json<LoginBody>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
+pub async fn user_login(_api_key: ApiKey, db: &State<Database>, body_data: Json<LoginBody>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
     //? Get the required data
     let username = &body_data.0.username;
     let password = &body_data.0.password;
@@ -209,7 +212,7 @@ pub async fn user_login(db: &State<Database>, body_data: Json<LoginBody>, cookie
 
 
 #[get("/user/get")]
-pub async fn user_get(db: &State<Database>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
+pub async fn user_get(_api_key: ApiKey, db: &State<Database>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
     //? Fetch user's email from user_token cookie!
     let user_email: String = match verify_user_token_from_cookie(cookies) {
         Ok(res) => res.clone(),

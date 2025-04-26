@@ -4,6 +4,7 @@ pub mod api;
 pub mod db;
 pub mod types;
 pub mod utils;
+pub mod middlewares;
 
 use api::user::{confirm_registration, setup_registration, user_get, user_login, user_registration};
 use db::Database;

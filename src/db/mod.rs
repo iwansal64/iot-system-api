@@ -122,7 +122,7 @@ impl Database {
         }
     }
 
-    pub async fn setup_account(&self, target_id: &ObjectId, setup_token: &String, username: &String, password: &String) -> Result<RegistrationTable, ErrorType> {
+    pub async fn setup_account(&self, target_id: &ObjectId, setup_token: &String, username: &String, password: &String) -> Result<User, ErrorType> {
         //? Create query to find the confirmation data based on it's ID and Confirmation Token
         println!("[Setup Account] Target ID: {}", target_id);
         let query_result = self.registration.find_one(doc! {
@@ -161,22 +161,23 @@ impl Database {
 
         match duplicated_data {
             Some(_) => {
-                return Err(ErrorType::Unauthorized(None))
+                return Err(ErrorType::DuplicatesFound(None))
             },
             None => ()
         };
 
         
         //? Create user account
-        let user_creation_result = self.user.insert_one(User {
+        let user_data: User = User {
             id: ObjectId::new(),
             username: username.clone(),
             password: password.clone(),
             email: registration_data.email.clone(),
-        }).await;
+        };
+        let user_creation_result = self.user.insert_one(&user_data).await;
 
         match user_creation_result {
-            Ok(_) => Ok(registration_data),
+            Ok(_) => Ok(user_data),
             Err(err) => Err(ErrorType::UnknownError(Some(err.to_string())))
         }
     }

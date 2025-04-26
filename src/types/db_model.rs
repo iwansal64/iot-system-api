@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct User {
+    #[serde(rename = "_id")]
     pub id: ObjectId,
     pub username: String,
     pub email: String,

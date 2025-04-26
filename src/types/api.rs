@@ -20,7 +20,7 @@ pub enum ResponseBodyType {
         id: String
     },
     UserSetup {
-        user_token: String
+        user_data: User
     },
     UserLogin {
         user_data: User

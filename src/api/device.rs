@@ -45,7 +45,10 @@ pub async fn device_initialization(db: &State<Database>, body_data: Json<DeviceI
     };
 }
 
-// #[post("/device/connect_controllable", data = "<body_data>")]
-// pub async fn connect_controllable(body_data: Json<DeviceConnectControllable>) -> status::Custom<String>  {
-//     status::Custom(http::Status::Ok, format!("Token"))
-// }
+#[post("/device/connect_controllable", data = "<body_data>")]
+pub async fn connect_controllable(body_data: Json<DeviceConnectControllable>) -> status::Custom<String>  {
+    
+
+    
+    status::Custom(http::Status::Ok, format!("Token"))
+}

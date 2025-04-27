@@ -78,3 +78,22 @@ pub fn verify_user_token_from_cookie(cookies: &CookieJar<'_>) -> Result<String, 
         }
     }
 }
+
+pub fn generate_long_token() -> String {
+    let mut rng = rand::rng();
+    let characters_combinations = ('a'..='z').chain('A'..'Z').chain('0'..'9').collect::<Vec<char>>();
+    let mut generated_confirmation_token: ArrayString<25> = ArrayString::new();
+    for _ in 0..4 {
+        for _ in 0..4 {
+            generated_confirmation_token.push(characters_combinations.choose(&mut rng).unwrap().clone());
+        }
+        
+        generated_confirmation_token.push('-');
+    }
+
+    for _ in 0..4 {
+        generated_confirmation_token.push(characters_combinations.choose(&mut rng).unwrap().clone());
+    }
+
+    generated_confirmation_token.to_string()
+}

@@ -1,7 +1,7 @@
 use crate::types::db_model::User;
 use serde::Serialize;
 
-use super::db_model::Device;
+use super::db_model::{Controllable, Device};
 
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
@@ -32,5 +32,8 @@ pub enum ResponseBodyType {
     },
     CreateDevice {
         device_data: Device
+    },
+    CreateControllable {
+        controllable_data: Controllable
     }
 }

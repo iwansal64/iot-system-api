@@ -1,4 +1,4 @@
-use crate::{db::Database, middlewares::security::ApiKey, types::{api::{ResponseBody, ResponseBodyType}, db_model::{RegistrationTable, User}, error::ErrorType}, utils::{self, create_user_token, verify_user_token_from_cookie}};
+use crate::{db::Database, middlewares::security::ApiKey, types::{api::{ResponseBody, ResponseBodyType}, db_model::{ControllableCategory, RegistrationTable, User}, error::ErrorType}, utils::{self, create_user_token, verify_user_token_from_cookie}};
 use lettre::{message::Mailbox, transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
 use mongodb::bson::oid::ObjectId;
 use rocket::{http::{self, Cookie, CookieJar}, response::status, serde::json::Json, State};
@@ -32,6 +32,13 @@ pub struct LoginBody {
 #[derive(Serialize, Deserialize)]
 pub struct CreateDeviceBody {
     pub device_name: String
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct CreateControllableBody {
+    pub device_id: String,
+    pub controllable_name: String,
+    pub controllable_category: String
 }
 
 
@@ -248,8 +255,8 @@ pub async fn user_get(_api_key: ApiKey, db: &State<Database>, cookies: &CookieJa
 
 #[post("/user/create_device", data = "<body_data>")]
 pub async fn create_device(body_data: Json<CreateDeviceBody>, _api_key: ApiKey, db: &State<Database>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
-    match verify_user_token_from_cookie(cookies) {
-        Ok(_) => (),
+    let user_email = match verify_user_token_from_cookie(cookies) {
+        Ok(email) => email,
         Err(_) => {
             return status::Custom(http::Status::Unauthorized, Json(ResponseBody { message: format!("Unauthorized."), success: false, data: None }));
         }
@@ -257,8 +264,35 @@ pub async fn create_device(body_data: Json<CreateDeviceBody>, _api_key: ApiKey, 
     
     let device_name = &body_data.device_name;
 
-    match db.create_device(device_name).await {
+    match db.create_device(device_name, &user_email).await {
         Ok(res) => status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Successfully create device!"), success: true, data: Some(ResponseBodyType::CreateDevice { device_data: res }) })),
+        Err(_) => status::Custom(http::Status::InternalServerError, Json(ResponseBody { message: format!("There's an unexpected error."), success: false, data: None }))
+    }
+}
+
+#[post("/user/create_controllable", data = "<body_data>")]
+pub async fn create_controllable(body_data: Json<CreateControllableBody>, _api_key: ApiKey, db: &State<Database>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
+    let user_email = match verify_user_token_from_cookie(cookies) {
+        Ok(email) => email,
+        Err(_) => {
+            return status::Custom(http::Status::Unauthorized, Json(ResponseBody { message: format!("Unauthorized."), success: false, data: None }));
+        }
+    };
+    
+    let device_id = &body_data.device_id;
+    let controllable_name = &body_data.controllable_name;
+    let controllable_category = ControllableCategory::from_str(&body_data.controllable_category);
+
+    let controllable_category = match controllable_category {
+        Some(res) => res,
+        None => {
+            return status::Custom(http::Status::BadRequest, Json(ResponseBody { message: format!("Bad Request Body"), success: false, data: None }))
+        }
+    };
+    
+
+    match db.create_controllable(device_id, &controllable_name, controllable_category, &user_email).await {
+        Ok(res) => status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Successfully create device!"), success: true, data: Some(ResponseBodyType::CreateControllable { controllable_data: res }) })),
         Err(_) => status::Custom(http::Status::InternalServerError, Json(ResponseBody { message: format!("There's an unexpected error."), success: false, data: None }))
     }
 }

@@ -9,7 +9,9 @@ pub struct User {
     pub id: ObjectId,
     pub username: String,
     pub email: String,
-    pub password: String
+    pub password: String,
+    pub mqtt_user: String,
+    pub mqtt_pass: String
 }
 
 impl User {
@@ -18,7 +20,9 @@ impl User {
             username,
             email,
             password,
-            id: ObjectId::new()
+            id: ObjectId::new(),
+            mqtt_pass: generate_long_token(),
+            mqtt_user: generate_long_token()
         }
     }
 }

@@ -38,10 +38,13 @@ impl Database {
             Ok(user_data_exist) => {
                 match user_data_exist {
                     Some(user_data) => Ok(user_data),
-                    None => Err(ErrorType::UserNotFound(Some(format!("There's no user with ID: {}", email))))
+                    None => Err(ErrorType::UserNotFound(None))
                 }
             },
-            Err(err) => Err(ErrorType::UnknownError(Some(err.to_string())))
+            Err(err) => {
+                println!("There's an error when trying to get user data. Error: {}", err.to_string());
+                return Err(ErrorType::UnknownError(Some(err.to_string())));
+            }
         }
     }
 
@@ -294,6 +297,50 @@ impl Database {
                 println!("There's an error when trying to create controllable data");
                 Err(ErrorType::UnknownError(Some(err.to_string())))
             },
+        }
+    }
+
+    pub async fn get_controllable(&self, controllable_name: &str) -> Result<Controllable, ErrorType> {
+        //? Get the controllable data
+        let controllable_data: Result<Option<Controllable>, _> = self.controllable.find_one(doc! {
+            "controllable_name": controllable_name
+        }).await;
+        
+        // Check if there's an error
+        let controllable_data: Option<Controllable> = match controllable_data {
+            Ok(res) => res,
+            Err(err) => {
+                println!("There's an error when trying to get controllable data. Error: {}", err.to_string());
+                return Err(ErrorType::UnknownError(Some(err.to_string())))
+            }
+        };
+
+        // Check if there's no controllable found
+        let controllable_data: Controllable = match controllable_data {
+            Some(res) => res,
+            None => {
+                return Err(ErrorType::ControllableNotFound(None));
+            }
+        };
+
+        Ok(controllable_data)
+    }
+
+    pub async fn verify_device_key_pass(&self, device_key: &str, device_pass: &str) -> Result<Device, ErrorType> {
+        let device_data = match self.device.find_one(doc! {
+            "device_key": device_key,
+            "device_pass": device_pass
+        }).await {
+            Ok(res) => res,
+            Err(err) => {
+                println!("There's an error when trying to get device data. Error: {}", err.to_string());
+                return Err(ErrorType::UnknownError(Some(err.to_string())));
+            }
+        };
+
+        match device_data {
+            Some(res) => Ok(res),
+            None => Err(ErrorType::DeviceNotFound(None)),
         }
     }
 }

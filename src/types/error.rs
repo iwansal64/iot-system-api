@@ -4,6 +4,7 @@ pub enum ErrorType {
     Unauthorized(Option<String>),
     UserNotFound(Option<String>),
     DuplicatesFound(Option<String>),
+    DeviceNotFound(Option<String>),
+    ControllableNotFound(Option<String>),
     Unused(Option<String>),
-    DeviceNotFound(Option<String>)
 }

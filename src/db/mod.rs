@@ -1,23 +1,26 @@
 use mongodb::{bson::{doc, oid::ObjectId, DateTime}, options::ClientOptions, Client, Collection};
 
-use crate::{types::error::ErrorType, types::db_model::{RegistrationTable, User}};
+use crate::types::{db_model::{Device, RegistrationTable, User}, error::ErrorType};
 
 pub struct Database {
     user: Collection<User>,
     registration: Collection<RegistrationTable>,
+    device: Collection<Device>
 }
 
 impl Database {
-    pub async fn new(mongodb_uri: &str, database_name: &str, user_collection_name: &str, reg_table_collection_name: &str) -> Self {
+    pub async fn new(mongodb_uri: &str, database_name: &str, user_collection_name: &str, reg_table_collection_name: &str, device_collection_name: &str) -> Self {
         let options: ClientOptions = ClientOptions::parse(mongodb_uri).await.unwrap();
         let client: Client = Client::with_options(options).unwrap();
         let db: mongodb::Database = client.database(database_name);
         let user_col: Collection<User> = db.collection::<User>(user_collection_name);
         let registration_col: Collection<RegistrationTable> = db.collection::<RegistrationTable>(reg_table_collection_name);
+        let device_col: Collection<Device> = db.collection::<Device>(device_collection_name);
 
         Self {
             user: user_col,
-            registration: registration_col
+            registration: registration_col,
+            device: device_col
         }
     }
 
@@ -39,7 +42,7 @@ impl Database {
         }
     }
 
-    pub async fn insert_registration(&self, confirmation_token: &String, setup_token: &String, email: &String) -> Result<String, ErrorType> {
+    pub async fn insert_registration(&self, email: &String) -> Result<RegistrationTable, ErrorType> {
         println!("[Insert Registration] Email: {}", email);
 
         //? Verify there's no duplicates
@@ -59,25 +62,15 @@ impl Database {
 
         
         //? Prepare the required data value
-        let id: ObjectId = ObjectId::new();
-        let created_at: DateTime = DateTime::now();
-
-        let registration_entry = RegistrationTable {
-            id,
-            confirmation_token: confirmation_token.clone(),
-            setup_token: setup_token.clone(),
-            email: email.clone(),
-            created_at,
-            confirmed: false
-        };
+        let registration_entry = RegistrationTable::new(email.clone());
 
         //? Create a query to insert the new registration data
-        let query_result: Result<mongodb::results::InsertOneResult, mongodb::error::Error> = self.registration.insert_one(registration_entry).await;
+        let query_result: Result<mongodb::results::InsertOneResult, mongodb::error::Error> = self.registration.insert_one(&registration_entry).await;
 
 
         //? Check if there's error. if not, send the ID
         match query_result {
-            Ok(_) => Ok(id.to_string()),
+            Ok(_) => Ok(registration_entry),
             Err(error) => Err(ErrorType::UnknownError(Some(error.to_string())))
         }
     }
@@ -168,12 +161,7 @@ impl Database {
 
         
         //? Create user account
-        let user_data: User = User {
-            id: ObjectId::new(),
-            username: username.clone(),
-            password: password.clone(),
-            email: registration_data.email.clone(),
-        };
+        let user_data: User = User::new(username.clone(), registration_data.email.clone(), password.clone());
         let user_creation_result = self.user.insert_one(&user_data).await;
 
         match user_creation_result {
@@ -206,6 +194,60 @@ impl Database {
                 }
             },
             Err(err) => Err(ErrorType::UnknownError(Some(err.to_string())))
+        }
+    }
+
+    pub async fn initialize_device(&self, device_key: &String, device_pass: &String) -> Result<Device, ErrorType> {
+        match self.device.update_one(doc! {
+            "device_key": device_key,
+            "device_pass": device_pass
+        }, doc! {
+            "$set": {
+                "last_online": DateTime::now(),
+                "status": 0
+            }
+        }).await {
+            Ok(res) => {
+                match res.matched_count {
+                    0 => {
+                        Err(ErrorType::DeviceNotFound(None))
+                    },
+                    _ => {
+                        let device_data = match self.device.find_one(doc! {
+                            "device_key": device_key,
+                            "device_pass": device_pass
+                        }).await {
+                            Ok(res) => match res {
+                                Some(data) => data,
+                                None => {
+                                    return Err(ErrorType::DeviceNotFound(None));
+                                }
+                            },
+                            Err(err) => {
+                                println!("There's an error when trying to get device data. Error: {}", err.to_string());
+                                return Err(ErrorType::UnknownError(None));
+                            }
+                        };
+
+                        Ok(device_data)
+                    }
+                }
+            },
+            Err(err) => {
+                println!("There's an error when trying to update device data. Error: {}", err.to_string());
+                Err(ErrorType::UnknownError(Some(err.to_string())))
+            }
+        }
+    }
+
+    pub async fn create_device(&self, device_name: &String) -> Result<Device, ErrorType> {
+        let device_data = Device::new(device_name.to_string());
+        match self.device.insert_one(&device_data).await {
+            Ok(_) => Ok(device_data),
+            Err(err) => {
+                println!("There's an error when trying to insert device data. Error: {}", err.to_string());
+                Err(ErrorType::UnknownError(None))
+            }
         }
     }
 }

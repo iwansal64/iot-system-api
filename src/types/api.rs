@@ -1,6 +1,8 @@
 use crate::types::db_model::User;
 use serde::Serialize;
 
+use super::db_model::Device;
+
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
 pub struct ResponseBody {
@@ -27,5 +29,8 @@ pub enum ResponseBodyType {
     },
     UserGet {
         user_data: User
+    },
+    CreateDevice {
+        device_data: Device
     }
 }

@@ -1,4 +1,4 @@
-use crate::{db::Database, middlewares::security::ApiKey, types::{api::{ResponseBody, ResponseBodyType}, db_model::{RegistrationTable, User}, error::ErrorType}, utils::{self, create_user_token, generate_token, verify_user_token_from_cookie}};
+use crate::{db::Database, middlewares::security::ApiKey, types::{api::{ResponseBody, ResponseBodyType}, db_model::{RegistrationTable, User}, error::ErrorType}, utils::{self, create_user_token, verify_user_token_from_cookie}};
 use lettre::{message::Mailbox, transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
 use mongodb::bson::oid::ObjectId;
 use rocket::{http::{self, Cookie, CookieJar}, response::status, serde::json::Json, State};
@@ -29,11 +29,16 @@ pub struct LoginBody {
     pub password: String
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct CreateDeviceBody {
+    pub device_name: String
+}
+
 
 #[post("/user/registration", data = "<body_data>")]
 pub async fn user_registration(_api_key: ApiKey, db: &State<Database>, body_data: Json<UserRegistrationBody>) -> status::Custom<Json<ResponseBody>> {
     //? Get the required data
-    let user_email = &body_data.0.email;
+    let user_email = &body_data.email;
     println!("Incoming Email: {}", user_email);
     
     //? Check if the email is valid or not.
@@ -42,12 +47,8 @@ pub async fn user_registration(_api_key: ApiKey, db: &State<Database>, body_data
     }
 
 
-    //? Generate confirmation token
-    let generated_confirmation_token: String = generate_token();
-    let generated_setup_token: String = generate_token();
-
     //? Store the confirmation token to database
-    let result_id: String = match db.insert_registration(&generated_confirmation_token, &generated_setup_token, user_email).await {
+    let registration_data: RegistrationTable = match db.insert_registration(user_email).await {
         Ok(result) => result,
         Err(error) => {
             match error {
@@ -85,7 +86,7 @@ pub async fn user_registration(_api_key: ApiKey, db: &State<Database>, body_data
         .from(email_from)
         .to(email_to)
         .subject("Account Confirmation")
-        .body(format!("Hi there, Thank you for signing up to ROVI Project! Please use token below to proceed:<br /><b>TOKEN:[{}]</b>", generated_confirmation_token)) {
+        .body(format!("Hi there, Thank you for signing up to ROVI Project! Please use token below to proceed:<br /><b>TOKEN:[{}]</b>", registration_data.confirmation_token)) {
             Ok(res) => res,
             Err(err) => {
                 println!("There's an error when trying to build message data. Error: {}", err);
@@ -117,15 +118,15 @@ pub async fn user_registration(_api_key: ApiKey, db: &State<Database>, body_data
     };
 
     //? Success
-    status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Successfully sent email confirmation to {}!", user_email.as_str()), success: true, data: Some(ResponseBodyType::UserRegistration { id: result_id }) }))
+    status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Successfully sent email confirmation to {}!", user_email.as_str()), success: true, data: Some(ResponseBodyType::UserRegistration { id: registration_data.id.to_string() }) }))
 }
 
 
 #[post("/user/confirm_registration", data = "<body_data>")]
 pub async fn confirm_registration(_api_key: ApiKey, db: &State<Database>, body_data: Json<ConfirmRegistrationBody>) -> status::Custom<Json<ResponseBody>> {
     //? Get the required data
-    let target_id = &body_data.0.id;
-    let confirmation_token = &body_data.0.token;
+    let target_id = &body_data.id;
+    let confirmation_token = &body_data.token;
     
     //? Get the confirmation data
     let registration_data: RegistrationTable = match db.get_confirmation_data(target_id, confirmation_token).await {
@@ -152,10 +153,10 @@ pub async fn confirm_registration(_api_key: ApiKey, db: &State<Database>, body_d
 #[post("/user/setup_registration", data = "<body_data>")]
 pub async fn setup_registration(_api_key: ApiKey, db: &State<Database>, body_data: Json<SetupRegistrationBody>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
     //? Get the required data
-    let target_id = &body_data.0.id;
-    let setup_token = &body_data.0.token;
-    let username = &body_data.0.username;
-    let password = &body_data.0.password;
+    let target_id = &body_data.id;
+    let setup_token = &body_data.token;
+    let username = &body_data.username;
+    let password = &body_data.password;
 
     //? Setup account
     let result = db.setup_account(target_id, setup_token, username, password).await;
@@ -186,8 +187,8 @@ pub async fn setup_registration(_api_key: ApiKey, db: &State<Database>, body_dat
 #[post("/user/login", data = "<body_data>")]
 pub async fn user_login(_api_key: ApiKey, db: &State<Database>, body_data: Json<LoginBody>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
     //? Get the required data
-    let username = &body_data.0.username;
-    let password = &body_data.0.password;
+    let username = &body_data.username;
+    let password = &body_data.password;
 
     //? Verify login
     let login_result = db.verify_login(username, password).await;
@@ -243,4 +244,21 @@ pub async fn user_get(_api_key: ApiKey, db: &State<Database>, cookies: &CookieJa
 
     //? Return the user data that we've just got! :)
     status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Successfully get user data"), success: true, data: Some(ResponseBodyType::UserGet { user_data: user_data }) }))
+}
+
+#[post("/user/create_device", data = "<body_data>")]
+pub async fn create_device(body_data: Json<CreateDeviceBody>, _api_key: ApiKey, db: &State<Database>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
+    match verify_user_token_from_cookie(cookies) {
+        Ok(_) => (),
+        Err(_) => {
+            return status::Custom(http::Status::Unauthorized, Json(ResponseBody { message: format!("Unauthorized."), success: false, data: None }));
+        }
+    };
+    
+    let device_name = &body_data.device_name;
+
+    match db.create_device(device_name).await {
+        Ok(res) => status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Successfully create device!"), success: true, data: Some(ResponseBodyType::CreateDevice { device_data: res }) })),
+        Err(_) => status::Custom(http::Status::InternalServerError, Json(ResponseBody { message: format!("There's an unexpected error."), success: false, data: None }))
+    }
 }

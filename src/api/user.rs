@@ -1,4 +1,4 @@
-use crate::{db::Database, middlewares::security::ApiKey, types::{api::{ResponseBody, ResponseBodyType}, db_model::{ControllableCategory, RegistrationTable, User}, error::ErrorType}, utils::{self, create_user_token, verify_user_token_from_cookie}};
+use crate::{db::Database, middlewares::security::ApiKey, types::{api::{ResponseBody, ResponseBodyType}, db_model::{ControllableCategory, LoginOTPTable, RegistrationTable, User}, error::ErrorType}, utils::{self, create_user_token, sends_email, verify_user_token_from_cookie}};
 use lettre::{message::Mailbox, transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
 use mongodb::bson::oid::ObjectId;
 use rocket::{http::{self, Cookie, CookieJar}, response::status, serde::json::Json, State};
@@ -24,9 +24,20 @@ pub struct SetupRegistrationBody {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct LoginBody {
+pub struct PasswordLoginBody {
     pub username: String,
     pub password: String
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct OTPLoginBody {
+    pub email: String
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct OTPLoginVerifyBody {
+    pub email: String,
+    pub otp: String
 }
 
 #[derive(Serialize, Deserialize)]
@@ -124,6 +135,11 @@ pub async fn user_registration(_api_key: ApiKey, db: &State<Database>, body_data
         },
     };
 
+    match sends_email(user_email, "Account Confirmation", format!("Hi there, Thank you for signing up to ROVI Project! Please use token below to proceed:<br /><b>TOKEN:[{}]</b>", registration_data.confirmation_token).as_str()) {
+        Ok(_) => (),
+        Err(_) => return status::Custom(http::Status::InternalServerError, Json(ResponseBody { message: format!("There's an error when trying to send email"), success: false, data: None }))
+    };
+
     //? Success
     status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Successfully sent email confirmation to {}!", user_email.as_str()), success: true, data: Some(ResponseBodyType::UserRegistration { id: registration_data.id.to_string() }) }))
 }
@@ -191,8 +207,8 @@ pub async fn setup_registration(_api_key: ApiKey, db: &State<Database>, body_dat
 }
 
 
-#[post("/user/login", data = "<body_data>")]
-pub async fn user_login(_api_key: ApiKey, db: &State<Database>, body_data: Json<LoginBody>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
+#[post("/user/password_login", data = "<body_data>")]
+pub async fn user_password_login(_api_key: ApiKey, db: &State<Database>, body_data: Json<PasswordLoginBody>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
     //? Get the required data
     let username = &body_data.username;
     let password = &body_data.password;
@@ -216,6 +232,34 @@ pub async fn user_login(_api_key: ApiKey, db: &State<Database>, body_data: Json<
             status::Custom(http::Status::InternalServerError, Json(ResponseBody { message: format!("There's an unexpected error."), success: false, data: None }))
         }
     }
+}
+
+
+#[post("/user/otp_login", data = "<body_data>")]
+pub async fn user_otp_login(_api_key: ApiKey, db: &State<Database>, body_data: Json<OTPLoginBody>) -> status::Custom<Json<ResponseBody>> {
+    //? Get the required data
+    let user_email = &body_data.email;
+
+
+    //? Generate and store token
+    let login_otp_data: Result<LoginOTPTable, ErrorType> = db.create_otp_login(user_email).await;
+    let login_otp_data: LoginOTPTable = match login_otp_data {
+        Ok(res) => res,
+        Err(err) => {
+            match err {
+                ErrorType::DuplicatesFound(_) => return status::Custom(http::Status::Conflict, Json(ResponseBody { message: format!("Duplicated data found."), success: false, data: None })),
+                _ => return status::Custom(http::Status::InternalServerError, Json(ResponseBody { message: format!("There's an error when trying to create otp code"), success: false, data: None }))
+            }
+        }
+    };
+    
+    //? Send the OTP to the gmail
+    match sends_email(user_email, "OTP Login Confirmation", format!("Hi there, Thank you for signing up to ROVI Project! Please use token below to proceed:<br /><b>TOKEN:[{}]</b>", login_otp_data.confirmation_token).as_str()) {
+        Ok(_) => (),
+        Err(_) => return status::Custom(http::Status::InternalServerError, Json(ResponseBody { message: format!("There's an error when trying to send email"), success: false, data: None }))
+    };
+
+    status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Please, check your gmail message"), success: true, data: None }))
 }
 
 

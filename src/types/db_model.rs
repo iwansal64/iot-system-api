@@ -52,6 +52,27 @@ impl RegistrationTable {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoginOTPTable {
+    #[serde(rename = "_id")]
+    pub id: ObjectId,
+    pub confirmation_token: String,
+    pub email: String,
+    pub created_at: DateTime,
+}
+
+impl LoginOTPTable {
+    pub fn new(email: String) -> Self {
+        Self {
+            email,
+            id: ObjectId::new(),
+            confirmation_token: generate_token(),
+            created_at: DateTime::now()
+        }
+    }
+}
+
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Device {

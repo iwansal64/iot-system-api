@@ -1,16 +1,17 @@
 use mongodb::{bson::{doc, oid::ObjectId, DateTime}, options::ClientOptions, Client, Collection};
 
-use crate::types::{db_model::{Controllable, ControllableCategory, Device, RegistrationTable, User}, error::ErrorType};
+use crate::types::{db_model::{Controllable, ControllableCategory, Device, LoginOTPTable, RegistrationTable, User}, error::ErrorType};
 
 pub struct Database {
     user: Collection<User>,
     registration: Collection<RegistrationTable>,
     device: Collection<Device>,
-    controllable: Collection<Controllable>
+    controllable: Collection<Controllable>,
+    otp: Collection<LoginOTPTable>
 }
 
 impl Database {
-    pub async fn new(mongodb_uri: &str, database_name: &str, user_collection_name: &str, reg_table_collection_name: &str, device_collection_name: &str, controllable_collection_name: &str) -> Self {
+    pub async fn new(mongodb_uri: &str, database_name: &str, user_collection_name: &str, reg_table_collection_name: &str, device_collection_name: &str, controllable_collection_name: &str, otp_collection_name: &str) -> Self {
         let options: ClientOptions = ClientOptions::parse(mongodb_uri).await.unwrap();
         let client: Client = Client::with_options(options).unwrap();
         let db: mongodb::Database = client.database(database_name);
@@ -18,12 +19,14 @@ impl Database {
         let registration_col: Collection<RegistrationTable> = db.collection::<RegistrationTable>(reg_table_collection_name);
         let device_col: Collection<Device> = db.collection::<Device>(device_collection_name);
         let controllable_col: Collection<Controllable> = db.collection::<Controllable>(controllable_collection_name);
+        let otp_col: Collection<LoginOTPTable> = db.collection::<LoginOTPTable>(otp_collection_name);
 
         Self {
             user: user_col,
             registration: registration_col,
             device: device_col,
-            controllable: controllable_col
+            controllable: controllable_col,
+            otp: otp_col
         }
     }
 
@@ -341,6 +344,23 @@ impl Database {
         match device_data {
             Some(res) => Ok(res),
             None => Err(ErrorType::DeviceNotFound(None)),
+        }
+    }
+
+    pub async fn create_otp_login(&self, email: &str) -> Result<LoginOTPTable, ErrorType> {
+        println!("[Insert Registration] Email: {}", email);
+        
+        //? Prepare the required data value
+        let login_otp_entry = LoginOTPTable::new(email.to_string());
+
+        //? Create a query to insert the new registration data
+        let query_result: Result<mongodb::results::InsertOneResult, mongodb::error::Error> = self.otp.insert_one(&login_otp_entry).await;
+
+
+        //? Check if there's error. if not, send the ID
+        match query_result {
+            Ok(_) => Ok(login_otp_entry),
+            Err(error) => Err(ErrorType::UnknownError(Some(error.to_string())))
         }
     }
 }

@@ -6,7 +6,7 @@ pub mod types;
 pub mod utils;
 pub mod middlewares;
 
-use api::{device::{device_initialization, get_controllable}, user::{confirm_registration, create_controllable, create_device, setup_registration, user_get, user_otp_login, user_password_login, user_registration}};
+use api::{device::{device_initialization, get_controllable}, user::{confirm_registration, create_controllable, create_device, setup_registration, user_get, user_otp_login, user_otp_verify, user_password_login, user_registration}};
 use db::Database;
 use dotenvy::dotenv;
 use std::env;
@@ -37,6 +37,7 @@ async fn rocket() -> _ {
                 user_get,
                 create_device,
                 user_otp_login,
+                user_otp_verify,
                 /* Device API */ 
                 device_initialization,
                 create_controllable,

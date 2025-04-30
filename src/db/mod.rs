@@ -363,4 +363,25 @@ impl Database {
             Err(error) => Err(ErrorType::UnknownError(Some(error.to_string())))
         }
     }
+
+    pub async fn verify_otp_data(&self, email: &str, token: &str) -> Result<(), ErrorType> {
+        //? Get the otp data first
+        let login_otp_data = self.otp.find_one(doc! {
+            "email": email,
+            "confirmation_token": token
+        }).await;
+
+        match login_otp_data {
+            Ok(res) => {
+                match res {
+                    Some(_) => Ok(()),
+                    None => Err(ErrorType::Unauthorized(None)),
+                }
+            },
+            Err(err) => {
+                println!("There's an error when trying to get OTP data. Error: {}", err.to_string());
+                Err(ErrorType::UnknownError(Some(err.to_string())))
+            }
+        }
+    }
 }

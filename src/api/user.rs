@@ -1,7 +1,7 @@
 use crate::{db::Database, middlewares::security::ApiKey, types::{api::{ResponseBody, ResponseBodyType}, db_model::{ControllableCategory, LoginOTPTable, RegistrationTable, User}, error::ErrorType}, utils::{self, create_user_token, sends_email, verify_user_token_from_cookie}};
 use lettre::{message::Mailbox, transport::smtp::authentication::Credentials, Message, SmtpTransport, Transport};
 use mongodb::bson::oid::ObjectId;
-use rocket::{http::{self, Cookie, CookieJar}, response::status, serde::json::Json, State};
+use rocket::{http::{self, private::cookie, Cookie, CookieJar}, response::status, serde::json::Json, State};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -260,6 +260,31 @@ pub async fn user_otp_login(_api_key: ApiKey, db: &State<Database>, body_data: J
     };
 
     status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Please, check your gmail message"), success: true, data: None }))
+}
+
+
+#[post("/user/otp_login_verify", data = "<body_data>")]
+pub async fn user_otp_verify(_api_key: ApiKey, db: &State<Database>, body_data: Json<OTPLoginVerifyBody>, cookies: &CookieJar<'_>) -> status::Custom<Json<ResponseBody>> {
+    //? Get the required data
+    let email = &body_data.email;
+    let otp = &body_data.otp;
+    
+    //? Verify OTP token
+    let verification_result = db.verify_otp_data(email, otp).await;
+
+    match verification_result {
+        Ok(_) => (),
+        Err(err) => {
+            match err {
+                ErrorType::Unauthorized(_) => return status::Custom(http::Status::Unauthorized, Json(ResponseBody { message: format!("Unauthorized token"), success: false, data: None })),
+                _ => return status::Custom(http::Status::InternalServerError, Json(ResponseBody { message: format!("There's an error when checking the token"), success: false, data: None }))
+            }
+        }
+    };
+
+    //? Create user token
+    cookies.add(Cookie::new("user_token", create_user_token(email)));
+    status::Custom(http::Status::Ok, Json(ResponseBody { message: format!("Email verified"), success: true, data: None }))
 }
 
 
